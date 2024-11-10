@@ -62,8 +62,6 @@ func getCars(c echo.Context, conn *pgx.Conn) error {
 	carColumns := []string{"id", "brand", "model", "year", "state", "color", "fuel_type", "body_type"}
 	filterCarColumns := carColumns[1:]
 
-	var cars []Car
-
 	carsSQL := sq.Select(carColumns...).
 		PlaceholderFormat(sq.Dollar).
 		From("cars")
@@ -92,9 +90,11 @@ func getCars(c echo.Context, conn *pgx.Conn) error {
 	}
 	defer rows.Close()
 
+	var cars []map[string]interface{}
+
 	for rows.Next() {
-		var car Car
-		if err := rows.Scan(&car.ID, &car.Brand, &car.Model, &car.Year, &car.State, &car.Color, &car.FuelType, &car.BodyType); err != nil {
+		car, err := scanRowToMap(rows, carColumns)
+		if err != nil {
 			c.Logger().Error(err)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to scan car"})
 		}
@@ -103,4 +103,33 @@ func getCars(c echo.Context, conn *pgx.Conn) error {
 	}
 
 	return c.JSON(http.StatusOK, cars)
+}
+
+func scanRowToMap(rows pgx.Rows, cols []string) (map[string]interface{}, error) {
+	result := make(map[string]interface{})
+	count := len(cols)
+	values := make([]interface{}, count)
+	valuePtrs := make([]interface{}, count)
+
+	for i := range cols {
+		valuePtrs[i] = &values[i]
+	}
+
+	err := rows.Scan(valuePtrs...)
+	if err != nil {
+		return result, err
+	}
+
+	for i, col := range cols {
+		val := values[i]
+
+		b, ok := val.([]byte)
+		if ok {
+			result[col] = string(b)
+		} else {
+			result[col] = val
+		}
+	}
+
+	return result, nil
 }
