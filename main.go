@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	sq "github.com/Masterminds/squirrel"
@@ -76,7 +77,16 @@ func getCars(c echo.Context, conn *pgx.Conn) error {
 		}
 	}
 
-	carsSQL = carsSQL.Limit(10)
+	// limit param to limit how much the data will be shown
+	limit := validateLimit(c.QueryParam("limit"))
+	carsSQL = carsSQL.Limit(limit)
+
+	// page param to get to the desired page
+	offset := validateOffset(c.QueryParam("page"), limit)
+	carsSQL = carsSQL.Offset(offset)
+
+	sortBy := "id"
+	carsSQL = carsSQL.OrderBy(sortBy)
 
 	sql, args, err := carsSQL.ToSql()
 	c.Logger().Debug(sql)
@@ -161,4 +171,33 @@ func validateFields(fullFields []string, desiredFields string) []string {
 	}
 
 	return result
+}
+
+func validateLimit(limitStr string) uint64 {
+	defaultLimit := uint64(10)
+	maxLimit := uint64(100)
+
+	limit, err := strconv.ParseUint(limitStr, 10, 64)
+	if err != nil {
+		return defaultLimit
+	}
+
+	if limit > maxLimit {
+		return maxLimit
+	}
+
+	if limit <= 0 {
+		return 1
+	}
+
+	return limit
+}
+
+func validateOffset(pageStr string, limit uint64) uint64 {
+	page, err := strconv.ParseUint(pageStr, 10, 64)
+	if err != nil {
+		return uint64(0)
+	}
+
+	return (page - 1) * limit
 }
