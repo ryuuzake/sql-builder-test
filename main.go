@@ -59,46 +59,20 @@ type Car struct {
 }
 
 func getCars(c echo.Context, conn *pgx.Conn) error {
-	brand := c.QueryParam("brand")
-	model := c.QueryParam("model")
-	year := c.QueryParam("year")
-	state := c.QueryParam("state")
-	color := c.QueryParam("color")
-	fuel_type := c.QueryParam("fuel_type")
-	body_type := c.QueryParam("body_type")
+	carColumns := []string{"id", "brand", "model", "year", "state", "color", "fuel_type", "body_type"}
+	filterCarColumns := carColumns[1:]
 
 	var cars []Car
 
-	carsSQL := sq.Select("id", "brand", "model", "year", "state", "color", "fuel_type", "body_type").
+	carsSQL := sq.Select(carColumns...).
 		PlaceholderFormat(sq.Dollar).
 		From("cars")
 
-	if brand != "" {
-		carsSQL = carsSQL.Where(sq.Eq{"brand": brand})
-	}
-
-	if model != "" {
-		carsSQL = carsSQL.Where(sq.Eq{"model": model})
-	}
-
-	if year != "" {
-		carsSQL = carsSQL.Where(sq.Eq{"year": year})
-	}
-
-	if state != "" {
-		carsSQL = carsSQL.Where(sq.Eq{"state": state})
-	}
-
-	if color != "" {
-		carsSQL = carsSQL.Where(sq.Eq{"color": color})
-	}
-
-	if fuel_type != "" {
-		carsSQL = carsSQL.Where(sq.Eq{"fuel_type": fuel_type})
-	}
-
-	if body_type != "" {
-		carsSQL = carsSQL.Where(sq.Eq{"body_type": body_type})
+	for _, col := range filterCarColumns {
+		queryParam := c.QueryParam(col)
+		if queryParam != "" {
+			carsSQL = carsSQL.Where(sq.Eq{col: queryParam})
+		}
 	}
 
 	carsSQL = carsSQL.Limit(10)
