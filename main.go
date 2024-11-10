@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/jackc/pgx/v5"
@@ -59,10 +60,12 @@ type Car struct {
 }
 
 func getCars(c echo.Context, conn *pgx.Conn) error {
-	carColumns := []string{"id", "brand", "model", "year", "state", "color", "fuel_type", "body_type"}
-	filterCarColumns := carColumns[1:]
+	fullColumns := []string{"id", "brand", "model", "year", "state", "color", "fuel_type", "body_type"}
+	// fields param to filter which column shown
+	selectedColumns := validateFields(fullColumns, c.QueryParam("fields"))
+	filterCarColumns := fullColumns[1:]
 
-	carsSQL := sq.Select(carColumns...).
+	carsSQL := sq.Select(selectedColumns...).
 		PlaceholderFormat(sq.Dollar).
 		From("cars")
 
@@ -93,7 +96,7 @@ func getCars(c echo.Context, conn *pgx.Conn) error {
 	var cars []map[string]interface{}
 
 	for rows.Next() {
-		car, err := scanRowToMap(rows, carColumns)
+		car, err := scanRowToMap(rows, selectedColumns)
 		if err != nil {
 			c.Logger().Error(err)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to scan car"})
@@ -132,4 +135,30 @@ func scanRowToMap(rows pgx.Rows, cols []string) (map[string]interface{}, error) 
 	}
 
 	return result, nil
+}
+
+func validateFields(fullFields []string, desiredFields string) []string {
+	if desiredFields == "" {
+		return fullFields
+	}
+
+	// Create a map for fast lookups from fullFields
+	fullFieldsMap := make(map[string]struct{}, len(fullFields))
+	for _, field := range fullFields {
+		fullFieldsMap[field] = struct{}{} // Using an empty struct{} as a value, it's memory efficient
+	}
+
+	var result []string
+
+	for _, field := range strings.Split(desiredFields, ",") {
+		if _, exists := fullFieldsMap[field]; exists {
+			result = append(result, field)
+		} else if field == "*" {
+			for _, fullField := range fullFields {
+				result = append(result, fullField)
+			}
+		}
+	}
+
+	return result
 }
