@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -85,8 +86,8 @@ func getCars(c echo.Context, conn *pgx.Conn) error {
 	offset := validateOffset(c.QueryParam("page"), limit)
 	carsSQL = carsSQL.Offset(offset)
 
-	sortBy := "id"
-	carsSQL = carsSQL.OrderBy(sortBy)
+	// sort param to sort accordingly
+	carsSQL = validateSort(carsSQL, fullColumns, c.QueryParam("sort"))
 
 	sql, args, err := carsSQL.ToSql()
 	c.Logger().Debug(sql)
@@ -200,4 +201,40 @@ func validateOffset(pageStr string, limit uint64) uint64 {
 	}
 
 	return (page - 1) * limit
+}
+
+func validateSort(sql sq.SelectBuilder, fullFields []string, sortFields string) sq.SelectBuilder {
+	if sortFields == "" {
+		sql = sql.OrderBy("id")
+		return sql
+	}
+
+	r, _ := regexp.Compile("[+-]?[a-zA-Z_]*")
+
+	// Create a map for fast lookups from fullFields
+	fullFieldsMap := make(map[string]struct{}, len(fullFields))
+	for _, field := range fullFields {
+		fullFieldsMap[field] = struct{}{} // Using an empty struct{} as a value, it's memory efficient
+	}
+
+	for _, sortParam := range r.FindAllString(sortFields, -1) {
+		fmt.Println(sortParam)
+		if strings.HasPrefix(sortParam, "-") {
+			sortParam = sortParam[1:]
+
+			if _, exists := fullFieldsMap[sortParam]; exists {
+				sql = sql.OrderBy(fmt.Sprintf("%s DESC", sortParam))
+			}
+		} else if strings.HasPrefix(sortParam, "+") {
+			sortParam = sortParam[1:]
+
+			if _, exists := fullFieldsMap[sortParam]; exists {
+				sql = sql.OrderBy(sortParam)
+			}
+		} else if _, exists := fullFieldsMap[sortParam]; exists {
+			sql = sql.OrderBy(sortParam)
+		}
+	}
+
+	return sql
 }
